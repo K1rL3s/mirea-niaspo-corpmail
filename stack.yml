@@ -1,0 +1,280 @@
+services:
+  traefik:
+    image: traefik:v3.5
+    command:
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedByDefault=false
+      - --providers.swarm.network=corpmail_frontend
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --api.dashboard=true
+      - --ping=true
+      - --accesslog=true
+    ports:
+      - target: 80
+        published: 80
+      - target: 443
+        published: 443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: any
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.dashboard.rule=Host(`traefik.${MAIL_DOMAIN:-corp.local}`)
+        - traefik.http.routers.dashboard.entrypoints=websecure
+        - traefik.http.routers.dashboard.service=api@internal
+        - traefik.http.routers.dashboard.middlewares=dashboard-auth
+        - traefik.http.middlewares.dashboard-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}
+        - traefik.http.services.dashboard.loadbalancer.server.port=8080
+
+  roundcube:
+    image: roundcube/roundcubemail:1.7.4-apache
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: mysql
+      ROUNDCUBEMAIL_DB_HOST: mariadb
+      ROUNDCUBEMAIL_DB_NAME: roundcube
+      ROUNDCUBEMAIL_DB_USER: roundcube
+      ROUNDCUBEMAIL_DEFAULT_HOST: tls://dovecot
+      ROUNDCUBEMAIL_DEFAULT_PORT: "143"
+      ROUNDCUBEMAIL_SMTP_SERVER: tls://postfix
+      ROUNDCUBEMAIL_SMTP_PORT: "587"
+      ROUNDCUBEMAIL_USERNAME_DOMAIN: ${MAIL_DOMAIN:-corp.local}
+      ROUNDCUBEMAIL_PLUGINS: archive,zipdownload,markasjunk
+    secrets:
+      - roundcube_db_password
+      - roundcube_des_key
+    configs:
+      - source: roundcube_tls
+        target: /var/roundcube/config/tls.php
+    networks:
+      - frontend
+      - backend
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 5s
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.webmail.rule=PathPrefix(`/`)
+        - traefik.http.routers.webmail.priority=1
+        - traefik.http.routers.webmail.entrypoints=websecure
+        - traefik.http.services.webmail.loadbalancer.server.port=80
+        - traefik.http.services.webmail.loadbalancer.sticky.cookie=true
+
+  postfix:
+    image: ${REGISTRY:-registry:5000}/corpmail-postfix:${TAG:-latest}
+    environment:
+      MAIL_HOSTNAME: mail.${MAIL_DOMAIN:-corp.local}
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-corp.local}
+    ports:
+      - target: 25
+        published: 25
+        mode: host
+      - target: 587
+        published: 587
+        mode: host
+    networks:
+      - backend
+    deploy:
+      mode: global
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  dovecot:
+    image: ${REGISTRY:-registry:5000}/corpmail-dovecot:${TAG:-latest}
+    environment:
+      MAIL_HOSTNAME: mail.${MAIL_DOMAIN:-corp.local}
+    ports:
+      - target: 143
+        published: 143
+      - target: 993
+        published: 993
+    secrets:
+      - dovecot_users
+    volumes:
+      - vmail:/var/vmail
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.mail == true
+      update_config:
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  rspamd:
+    image: rspamd/rspamd:4.2.1
+    configs:
+      - source: rspamd_redis
+        target: /etc/rspamd/local.d/redis.conf
+      - source: rspamd_antivirus
+        target: /etc/rspamd/local.d/antivirus.conf
+      - source: rspamd_milter_headers
+        target: /etc/rspamd/local.d/milter_headers.conf
+      - source: rspamd_worker_proxy
+        target: /etc/rspamd/local.d/worker-proxy.inc
+      - source: rspamd_worker_controller
+        target: /etc/rspamd/local.d/worker-controller.inc
+      - source: rspamd_options
+        target: /etc/rspamd/local.d/options.inc
+      - source: rspamd_worker_normal
+        target: /etc/rspamd/local.d/worker-normal.inc
+    networks:
+      - frontend
+      - backend
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 5s
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.rspamd.rule=Host(`rspamd.${MAIL_DOMAIN:-corp.local}`)
+        - traefik.http.routers.rspamd.entrypoints=websecure
+        - traefik.http.services.rspamd.loadbalancer.server.port=11334
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+    deploy:
+      placement:
+        constraints:
+          - node.labels.mail == true
+      restart_policy:
+        condition: any
+
+  clamav:
+    image: clamav/clamav-debian:1.4
+    volumes:
+      - clamav-db:/var/lib/clamav
+    networks:
+      - backend
+    deploy:
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          memory: 2G
+      restart_policy:
+        condition: any
+        delay: 10s
+
+  mariadb:
+    image: mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/mariadb_root_password
+      MARIADB_DATABASE: roundcube
+      MARIADB_USER: roundcube
+      MARIADB_PASSWORD_FILE: /run/secrets/roundcube_db_password
+    secrets:
+      - mariadb_root_password
+      - roundcube_db_password
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 15s
+      start_period: 30s
+    deploy:
+      placement:
+        constraints:
+          - node.labels.db == true
+      restart_policy:
+        condition: any
+
+networks:
+  frontend:
+    driver: overlay
+  backend:
+    driver: overlay
+
+volumes:
+  vmail:
+  redis-data:
+  clamav-db:
+  mariadb-data:
+
+secrets:
+  dovecot_users:
+    name: dovecot_users_${SECRETS_VERSION:-1}
+    file: ./secrets/dovecot_users
+  mariadb_root_password:
+    name: mariadb_root_password_${SECRETS_VERSION:-1}
+    file: ./secrets/mariadb_root_password
+  roundcube_db_password:
+    name: roundcube_db_password_${SECRETS_VERSION:-1}
+    file: ./secrets/roundcube_db_password
+  roundcube_des_key:
+    name: roundcube_des_key_${SECRETS_VERSION:-1}
+    file: ./secrets/roundcube_des_key
+
+configs:
+  roundcube_tls:
+    name: roundcube_tls_${CONFIG_VERSION:-1}
+    file: ./roundcube/tls.php
+  rspamd_redis:
+    name: rspamd_redis_${CONFIG_VERSION:-1}
+    file: ./rspamd/redis.conf
+  rspamd_antivirus:
+    name: rspamd_antivirus_${CONFIG_VERSION:-1}
+    file: ./rspamd/antivirus.conf
+  rspamd_milter_headers:
+    name: rspamd_milter_headers_${CONFIG_VERSION:-1}
+    file: ./rspamd/milter_headers.conf
+  rspamd_worker_proxy:
+    name: rspamd_worker_proxy_${CONFIG_VERSION:-1}
+    file: ./rspamd/worker-proxy.inc
+  rspamd_options:
+    name: rspamd_options_${CONFIG_VERSION:-1}
+    file: ./rspamd/options.inc
+  rspamd_worker_normal:
+    name: rspamd_worker_normal_${CONFIG_VERSION:-1}
+    file: ./rspamd/worker-normal.inc
+  rspamd_worker_controller:
+    name: rspamd_worker_controller_${CONFIG_VERSION:-1}
+    file: ./secrets/rspamd-worker-controller.inc
