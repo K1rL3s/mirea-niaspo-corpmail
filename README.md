@@ -44,7 +44,7 @@ EICAR прикладывается файлом `readme.txt`, а проверк�
 
 ## Лабораторный кластер
 
-`lab/lab.sh up` поднимает на одной машине три узла Docker-in-Docker (`manager-01`, `worker-01`, `worker-02`) и локальный registry, объединяет их в Swarm и расставляет метки. Порты manager-01 проброшены на `127.0.0.1`: 8443 (HTTPS), 2525 (SMTP), 5587 (submission), 1143 (IMAP), 1993 (IMAPS), 2375 (Docker API).
+`lab/lab.sh up` поднимает на одной машине три узла Docker-in-Docker (`manager-01`, `worker-01`, `worker-02`) и локальный registry, объединяет их в Swarm и расставляет метки. Порты manager-01 проброшены на `127.0.0.1`: 8080 (HTTP, перенаправление на HTTPS), 8443 (HTTPS), 2525 (SMTP), 5587 (submission), 1143 (IMAP), 1993 (IMAPS), 2375 (Docker API).
 
 ```sh
 ./lab/lab.sh up
@@ -66,7 +66,7 @@ MAIL_HOST=127.0.0.1 SMTP_PORT=2525 SUBMISSION_PORT=5587 IMAP_PORT=1143 python3 s
 1. `lint` - проверка stack-файла, hadolint, shellcheck, `postfix check` и `doveconf` на собранных образах.
 2. `build` - сборка образов postfix и dovecot для amd64 и arm64, публикация в GitHub Container Registry с тегами коммита и `latest`.
 3. `deploy-test` - Swarm на раннере, развертывание стека из опубликованных образов, smoke-тест.
-4. `deploy` - rolling update на рабочем кластере по SSH; запускается, если заданы переменная `SWARM_MANAGER_HOST` и секреты `SWARM_SSH_KEY`, `STACK_SECRETS_TAR`.
+4. `deploy` - rolling update на рабочем кластере по SSH; запускается на ветке `master`, если заданы переменные `SWARM_MANAGER_HOST`, `SWARM_MANAGER_USER` и секреты `SWARM_SSH_KEY`, `STACK_SECRETS_TAR` (архив `tar.gz` каталога `secrets/` в base64).
 
 ## Ограничения
 

@@ -112,7 +112,7 @@ def main() -> int:
     except smtplib.SMTPAuthenticationError as error:
         results.append(check("SASL rejects wrong password", True, f"{error.smtp_code}"))
 
-    code, text = deliver_from_outside(message("spammer@external.test", f"nobody@example.org", "relay", "x"))
+    code, text = deliver_from_outside(message("spammer@external.test", "nobody@example.org", "relay", "x"))
     results.append(check("no open relay", code >= 500, f"{code} {text}"))
 
     code, text = deliver_from_outside(message("spammer@external.test", bob, f"gtube {token}", GTUBE))
