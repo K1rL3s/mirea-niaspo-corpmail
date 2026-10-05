@@ -2,14 +2,14 @@
 set -eu
 
 NET=corpmail-lab
-IMAGE=docker:28-dind
+IMAGE=docker:28-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac
 NODES="manager-01 worker-01 worker-02"
 
 on() { n=$1; shift; docker exec "$n" docker "$@"; }
 
 up() {
   docker network inspect "$NET" >/dev/null 2>&1 || docker network create "$NET" >/dev/null
-  docker run -d --name registry --network "$NET" --restart unless-stopped registry:2 >/dev/null
+  docker run -d --name registry --network "$NET" --restart unless-stopped registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 >/dev/null
   for n in $NODES; do
     ports=""
     if [ "$n" = manager-01 ]; then

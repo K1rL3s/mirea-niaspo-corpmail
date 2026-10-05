@@ -26,7 +26,7 @@ done > "$DIR/dovecot_users"
 [ -s "$DIR/roundcube_db_password" ] || random | tr -d '\n' > "$DIR/roundcube_db_password"
 [ -s "$DIR/roundcube_des_key" ] || openssl rand -hex 12 | tr -d '\n' > "$DIR/roundcube_des_key"
 
-hash=$(docker run --rm -q rspamd/rspamd:4.2.1 rspamadm pw -p "$ADMIN_PASSWORD")
+hash=$(docker run --rm -q rspamd/rspamd:4.2.1@sha256:dfb8176e560c178faa4e18ebf9c9b43d0d60c2d2fa03f748c34a27e5c3418dc4 rspamadm pw -p "$ADMIN_PASSWORD")
 printf 'password = "%s";\nenable_password = "%s";\nallow_file_and_shm_inputs = false;\n' "$hash" "$hash" > "$DIR/rspamd-worker-controller.inc"
 
 echo "TRAEFIK_DASHBOARD_USERS='admin:$(openssl passwd -apr1 "$ADMIN_PASSWORD")'" > "$DIR/stack.env"

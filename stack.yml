@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.5
+    image: traefik:v3.5@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2
     command:
       - --providers.swarm.endpoint=unix:///var/run/docker.sock
       - --providers.swarm.exposedByDefault=false
@@ -41,7 +41,7 @@ services:
         - traefik.http.services.dashboard.loadbalancer.server.port=8080
 
   roundcube:
-    image: roundcube/roundcubemail:1.7.4-apache
+    image: roundcube/roundcubemail:1.7.4-apache@sha256:1162705d5fa6514e6dc2eb71896c208fc3cae35b9cb49019ae23e3cbd9eab79b
     environment:
       ROUNDCUBEMAIL_DB_TYPE: mysql
       ROUNDCUBEMAIL_DB_HOST: mariadb
@@ -133,7 +133,7 @@ services:
         delay: 5s
 
   rspamd:
-    image: rspamd/rspamd:4.2.1
+    image: rspamd/rspamd:4.2.1@sha256:dfb8176e560c178faa4e18ebf9c9b43d0d60c2d2fa03f748c34a27e5c3418dc4
     configs:
       - source: rspamd_redis
         target: /etc/rspamd/local.d/redis.conf
@@ -169,7 +169,7 @@ services:
         - traefik.http.services.rspamd.loadbalancer.server.port=11334
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -186,7 +186,7 @@ services:
         condition: any
 
   clamav:
-    image: clamav/clamav-debian:1.4
+    image: clamav/clamav-debian:1.4@sha256:6d0680780fd29855cb7018f68272cb520821f614259e2066f8ec669069ac91b3
     volumes:
       - clamav-db:/var/lib/clamav
     networks:
@@ -203,7 +203,7 @@ services:
         delay: 10s
 
   mariadb:
-    image: mariadb:11.8
+    image: mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15
     environment:
       MARIADB_ROOT_PASSWORD_FILE: /run/secrets/mariadb_root_password
       MARIADB_DATABASE: roundcube
