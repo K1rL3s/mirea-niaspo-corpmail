@@ -25,8 +25,11 @@ jobs:
       - uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: dovecot/Dockerfile
+      - uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: lab/node/Dockerfile
       - name: Shellcheck
-        run: shellcheck -S warning scripts/*.sh lab/*.sh postfix/entrypoint.sh dovecot/entrypoint.sh
+        run: shellcheck -S warning scripts/*.sh lab/*.sh lab/node/entrypoint.sh postfix/entrypoint.sh dovecot/entrypoint.sh
       - name: Check service configs
         run: |
           docker build -q -t postfix-check postfix
@@ -77,14 +80,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Init single-node swarm
-        run: |
-          docker swarm init
-          docker node update --label-add db=true --label-add mail=true "$(docker node ls -q)"
+        run: docker swarm init
       - name: Deploy stack
         run: |
           REGISTRY=$(echo "$REGISTRY" | tr '[:upper:]' '[:lower:]')
-          export REGISTRY TAG=${{ github.sha }}
-          sed -i 's/node.role == worker/node.role == manager/' stack.yml
+          mkdir -p /tmp/corpmail-data/vmail /tmp/corpmail-data/redis /tmp/corpmail-data/mariadb
+          export REGISTRY TAG=${{ github.sha }} DATA_ROOT=/tmp/corpmail-data
           ./scripts/deploy.sh
       - name: Wait for clamd
         run: |
