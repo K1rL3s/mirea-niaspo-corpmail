@@ -26,24 +26,20 @@ up() {
     i=$((i + 1))
   done
   for n in $NODES; do
-    until docker exec "$n" docker info >/dev/null 2>&1; do sleep 1; done
+    until on "$n" info >/dev/null 2>&1; do sleep 1; done
   done
   addr=$(docker inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" node-01)
   on node-01 swarm init --advertise-addr "$addr" >/dev/null
   token=$(on node-01 swarm join-token -q manager)
   for n in node-02 node-03; do
     on "$n" swarm join --token "$token" "$addr:2377" >/dev/null
-  done
-  for n in node-02 node-03; do
     gl node-01 peer probe "$n" >/dev/null
   done
   until [ "$(gl node-01 pool list | grep -c Connected)" -eq 3 ]; do sleep 1; done
   gl node-01 volume create corpmail replica 3 \
     node-01:/data/brick/corpmail node-02:/data/brick/corpmail node-03:/data/brick/corpmail force >/dev/null
   gl node-01 volume start corpmail >/dev/null
-  for n in $NODES; do
-    docker exec "$n" mount -t glusterfs localhost:/corpmail /mnt/gluster
-  done
+  for n in $NODES; do docker exec "$n" mount -t glusterfs localhost:/corpmail /mnt/gluster; done
   docker exec node-01 mkdir -p /mnt/gluster/vmail /mnt/gluster/redis /mnt/gluster/mariadb
   on node-01 node ls
   gl node-01 volume info corpmail

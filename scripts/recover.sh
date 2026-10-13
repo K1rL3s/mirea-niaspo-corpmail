@@ -4,8 +4,8 @@ set -eu
 STACK=${STACK:-corpmail}
 VOLUME=${VOLUME:-corpmail}
 
-heal_entries() {
-  gluster volume heal "$VOLUME" info | awk '/^Number of entries:/ { if ($4 ~ /^[0-9]+$/) s += $4 } END { print s + 0 }'
+healed() {
+  gluster volume heal "$VOLUME" info | awk '/^Number of entries:/ { s += $4 } END { exit (s > 0) }'
 }
 
 single() {
@@ -13,9 +13,7 @@ single() {
   addr=$(docker info --format '{{.Swarm.NodeAddr}}')
   docker swarm init --force-new-cluster --advertise-addr "$addr" >/dev/null
   gluster --mode=script volume set "$VOLUME" cluster.quorum-type none >/dev/null
-  for s in dovecot mariadb redis; do
-    docker service update --force --detach=false "${STACK}_$s" >/dev/null
-  done
+  restart dovecot mariadb redis
   docker exec "$(docker ps -q -f "name=${STACK}_postfix" | head -1)" postqueue -f
   echo "on each returning node: sh -s join $addr $(docker swarm join-token -q manager) < scripts/recover.sh"
 }
@@ -26,16 +24,18 @@ join() {
 }
 
 finish() {
-  until [ "$(heal_entries)" -eq 0 ]; do sleep 5; done
+  until healed; do sleep 5; done
   gluster --mode=script volume set "$VOLUME" cluster.quorum-type auto >/dev/null
   for id in $(docker node ls --format '{{.ID}} {{.Status}}' | awk '$2 == "Down" { print $1 }'); do
     docker node demote "$id" >/dev/null 2>&1 || true
     docker node rm --force "$id" >/dev/null
   done
-  for s in roundcube rspamd; do
-    docker service update --force --detach=false "${STACK}_$s" >/dev/null
-  done
+  restart roundcube rspamd
   docker node ls
+}
+
+restart() {
+  for s in "$@"; do docker service update --force --detach=false "${STACK}_$s" >/dev/null; done
 }
 
 case "${1:-}" in

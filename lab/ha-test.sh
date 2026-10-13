@@ -9,13 +9,7 @@ on() { n=$1; shift; docker exec "$n" docker "$@"; }
 gl() { n=$1; shift; docker exec "$n" gluster --mode=script "$@"; }
 step() { printf '\n== %s\n' "$*"; }
 
-index() {
-  case $1 in
-    node-01) echo 0 ;;
-    node-02) echo 1 ;;
-    node-03) echo 2 ;;
-  esac
-}
+index() { echo $((${1#node-0} - 1)); }
 
 smoke() {
   i=$(index "$1")
@@ -27,17 +21,8 @@ placed() {
     | awk '$2 == "Running" { print $1 }'
 }
 
-ready_managers() {
-  on "$1" node ls --format '{{.Status}} {{.ManagerStatus}}' | grep -cE '^Ready (Leader|Reachable)'
-}
-
-heal_entries() {
-  gl "$1" volume heal corpmail info | awk '/^Number of entries:/ { if ($4 ~ /^[0-9]+$/) s += $4 } END { print s + 0 }'
-}
-
 wait_for() {
-  limit=$1; shift
-  deadline=$(( $(date +%s) + limit ))
+  deadline=$(( $(date +%s) + $1 )); shift
   until "$@" 2>/dev/null; do
     [ "$(date +%s)" -lt "$deadline" ] || { echo "timeout: $*"; exit 1; }
     sleep 3
@@ -49,30 +34,31 @@ start_node() {
     docker start "$1" >/dev/null || true
     sleep 10
   done
-  until docker exec "$1" docker info >/dev/null 2>&1; do sleep 2; done
+  until on "$1" info >/dev/null 2>&1; do sleep 2; done
 }
 
 dovecot_on() { [ "$(placed "$1" dovecot)" = "$2" ]; }
 dovecot_not_on() { p=$(placed "$1" dovecot); [ -n "$p" ] && [ "$p" != "$2" ]; }
-managers_ready() { [ "$(ready_managers "$1")" -eq "$2" ]; }
-healed() { [ "$(heal_entries "$1")" -eq 0 ]; }
+managers_ready() {
+  [ "$(on "$1" node ls --format '{{.Status}} {{.ManagerStatus}}' | grep -cE '^Ready (Leader|Reachable)')" -eq "$2" ]
+}
+healed() { gl "$1" volume heal corpmail info | awk '/^Number of entries:/ { s += $4 } END { exit (s > 0) }'; }
 globals_on() { for s in postfix traefik; do placed "$1" "$s" | grep -qx "$2" || return 1; done; }
 
-postfix_on() { docker exec "$1" sh -c "docker exec \$(docker ps -q -f name=${STACK}_postfix | head -1) $2"; }
-dovecot_exec() { docker exec "$1" sh -c "docker exec \$(docker ps -q -f name=${STACK}_dovecot | head -1) $2"; }
-delivered() { dovecot_exec "$1" "doveadm search -u bob@corp.local subject $2" | grep -q .; }
+task_exec() { docker exec "$1" sh -c "docker exec \$(docker ps -q -f name=${STACK}_$2 | head -1) $3"; }
+delivered() { task_exec "$1" dovecot "doveadm search -u bob@corp.local subject $2" | grep -q .; }
 
 send_external() {
   i=$(index "$1")
   python3 - "$((2525 + i))" "$2" <<'PY'
 import smtplib, sys, time
 port, subject = int(sys.argv[1]), sys.argv[2]
-message = f"From: ha-test@example.org\r\nTo: bob@corp.local\r\nSubject: {subject}\r\n\r\nsent while two nodes are down\r\n"
+message = f"From: partner@external.test\r\nTo: bob@corp.local\r\nSubject: {subject}\r\n\r\nsent while two nodes are down\r\n"
 deadline = time.time() + 420
 while True:
     try:
-        with smtplib.SMTP("127.0.0.1", port, "ha-test.example.org", timeout=30) as smtp:
-            smtp.sendmail("ha-test@example.org", ["bob@corp.local"], message)
+        with smtplib.SMTP("127.0.0.1", port, "mx.external.test", timeout=30) as smtp:
+            smtp.sendmail("partner@external.test", ["bob@corp.local"], message)
         print("accepted")
         break
     except (smtplib.SMTPException, OSError) as error:
@@ -87,8 +73,7 @@ step "1. smoke test on the full cluster"
 smoke node-01
 
 victim=$(placed node-01 dovecot)
-alive=""
-for n in $NODES; do [ "$n" = "$victim" ] || { alive=$n; break; }; done
+for alive in $NODES; do [ "$alive" = "$victim" ] || break; done
 step "2. stop $victim (runs dovecot), check from $alive"
 start=$(date +%s)
 docker stop "$victim" >/dev/null
@@ -105,8 +90,7 @@ wait_for 300 globals_on "$alive" "$victim"
 on "$alive" node ls
 
 holder=$(placed "$alive" dovecot)
-survivor=""
-for n in $NODES; do [ "$n" = "$holder" ] || { survivor=$n; break; }; done
+for survivor in $NODES; do [ "$survivor" = "$holder" ] || break; done
 dead=""
 for n in $NODES; do [ "$n" = "$survivor" ] || dead="$dead $n"; done
 subject="ha-test-$(date +%s)"
@@ -115,7 +99,7 @@ step "4. stop$dead, only $survivor is left"
 docker stop $dead >/dev/null
 sleep 20
 send_external "$survivor" "$subject"
-postfix_on "$survivor" "postqueue -p" | grep -q bob@corp.local
+task_exec "$survivor" postfix "postqueue -p" | grep -q bob@corp.local
 echo "message is queued on $survivor"
 
 step "5. recover.sh single on $survivor"

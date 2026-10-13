@@ -2,34 +2,32 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-DOMAIN=${MAIL_DOMAIN:-corp.local}
-DIR=secrets
-mkdir -p "$DIR"
-chmod 700 "$DIR"
+mkdir -p secrets
+chmod 700 secrets
+cd secrets
 
 random() { openssl rand -base64 18 | tr -d '/+=' | cut -c1-20; }
 
-[ -s "$DIR/credentials.env" ] || {
+[ -s credentials.env ] || {
   echo "ALICE_PASSWORD=$(random)"
   echo "BOB_PASSWORD=$(random)"
   echo "ADMIN_PASSWORD=$(random)"
-} > "$DIR/credentials.env"
+} > credentials.env
 # shellcheck source=/dev/null
-. "./$DIR/credentials.env"
+. ./credentials.env
 
-[ -s "$DIR/dovecot_users" ] || for user in alice:"$ALICE_PASSWORD" bob:"$BOB_PASSWORD" postmaster:"$ADMIN_PASSWORD"; do
-  name=${user%%:*}
-  echo "$name@$DOMAIN:{SHA512-CRYPT}$(openssl passwd -6 "${user#*:}")::::::"
-done > "$DIR/dovecot_users"
+[ -s dovecot_users ] || for user in alice:"$ALICE_PASSWORD" bob:"$BOB_PASSWORD" postmaster:"$ADMIN_PASSWORD"; do
+  echo "${user%%:*}@${MAIL_DOMAIN:-corp.local}:{SHA512-CRYPT}$(openssl passwd -6 "${user#*:}")::::::"
+done > dovecot_users
 
-[ -s "$DIR/mariadb_root_password" ] || random | tr -d '\n' > "$DIR/mariadb_root_password"
-[ -s "$DIR/roundcube_db_password" ] || random | tr -d '\n' > "$DIR/roundcube_db_password"
-[ -s "$DIR/roundcube_des_key" ] || openssl rand -hex 12 | tr -d '\n' > "$DIR/roundcube_des_key"
+[ -s mariadb_root_password ] || random | tr -d '\n' > mariadb_root_password
+[ -s roundcube_db_password ] || random | tr -d '\n' > roundcube_db_password
+[ -s roundcube_des_key ] || openssl rand -hex 12 | tr -d '\n' > roundcube_des_key
 
 hash=$(docker run --rm -q rspamd/rspamd:4.2.1@sha256:dfb8176e560c178faa4e18ebf9c9b43d0d60c2d2fa03f748c34a27e5c3418dc4 rspamadm pw -p "$ADMIN_PASSWORD")
-printf 'password = "%s";\nenable_password = "%s";\nallow_file_and_shm_inputs = false;\n' "$hash" "$hash" > "$DIR/rspamd-worker-controller.inc"
+printf 'password = "%s";\nenable_password = "%s";\nallow_file_and_shm_inputs = false;\n' "$hash" "$hash" > rspamd-worker-controller.inc
 
-echo "TRAEFIK_DASHBOARD_USERS='admin:$(openssl passwd -apr1 "$ADMIN_PASSWORD")'" > "$DIR/stack.env"
+echo "TRAEFIK_DASHBOARD_USERS='admin:$(openssl passwd -apr1 "$ADMIN_PASSWORD")'" > stack.env
 
-chmod 600 "$DIR"/*
-echo "secrets written to $DIR/, user passwords in $DIR/credentials.env"
+chmod 600 ./*
+echo "secrets written to secrets/, user passwords in secrets/credentials.env"

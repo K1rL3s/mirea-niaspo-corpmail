@@ -8,10 +8,9 @@ RUN apk add --no-cache dovecot dovecot-lmtpd openssl netcat-openbsd \
 
 COPY dovecot.conf /etc/dovecot/dovecot.conf
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 VOLUME /var/vmail
 EXPOSE 24 143 993 12345
-HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=15s --timeout=5s --start-period=15s \
   CMD ["sh", "-c", "nc -z 127.0.0.1 143 && nc -z 127.0.0.1 24"]
 ENTRYPOINT ["/entrypoint.sh"]

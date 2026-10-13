@@ -6,7 +6,6 @@ mydomain = corp.local
 myorigin = $mydomain
 mydestination = localhost
 mynetworks = 127.0.0.0/8
-inet_interfaces = all
 inet_protocols = ipv4
 biff = no
 
@@ -19,8 +18,6 @@ smtpd_banner = $myhostname ESMTP
 smtpd_helo_required = yes
 smtpd_sasl_type = dovecot
 smtpd_sasl_path = inet:dovecot:12345
-smtpd_sasl_auth_enable = no
-smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 message_size_limit = 26214400
 
@@ -32,7 +29,6 @@ smtp_tls_security_level = may
 
 smtpd_milters = inet:rspamd:11332
 non_smtpd_milters = $smtpd_milters
-milter_protocol = 6
 milter_default_action = accept
 milter_mail_macros = i {mail_addr} {client_addr} {client_name} {auth_authen}
 

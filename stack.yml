@@ -1,3 +1,12 @@
+x-rolling-update: &rolling-update
+  parallelism: 1
+  delay: 10s
+  order: start-first
+  failure_action: rollback
+x-restart: &restart
+  condition: any
+  delay: 5s
+
 services:
   traefik:
     image: traefik:v3.5@sha256:16acb89c6db341182970d6fdafece31303b0a380a8ed7aa51682e225229bf1d2
@@ -14,26 +23,19 @@ services:
       - --ping=true
       - --accesslog=true
     ports:
-      - target: 80
-        published: 80
-        mode: host
-      - target: 443
-        published: 443
-        mode: host
+      - {target: 80, published: 80, mode: host}
+      - {target: 443, published: 443, mode: host}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - frontend
+    networks: [frontend]
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 15s
     deploy:
       mode: global
       placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: any
+        constraints: [node.role == manager]
+      restart_policy: {condition: any}
       labels:
         - traefik.enable=true
         - traefik.http.routers.dashboard.rule=Host(`traefik.${MAIL_DOMAIN:-corp.local}`)
@@ -56,25 +58,14 @@ services:
       ROUNDCUBEMAIL_SMTP_PORT: "587"
       ROUNDCUBEMAIL_USERNAME_DOMAIN: ${MAIL_DOMAIN:-corp.local}
       ROUNDCUBEMAIL_PLUGINS: archive,zipdownload,markasjunk
-    secrets:
-      - roundcube_db_password
-      - roundcube_des_key
+    secrets: [roundcube_db_password, roundcube_des_key]
     configs:
-      - source: roundcube_tls
-        target: /var/roundcube/config/tls.php
-    networks:
-      - frontend
-      - backend
+      - {source: roundcube_tls, target: /var/roundcube/config/tls.php}
+    networks: [frontend, backend]
     deploy:
       replicas: 2
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
-        failure_action: rollback
-      restart_policy:
-        condition: any
-        delay: 5s
+      update_config: *rolling-update
+      restart_policy: *restart
       labels:
         - traefik.enable=true
         - traefik.http.routers.webmail.rule=PathPrefix(`/`)
@@ -89,81 +80,47 @@ services:
       MAIL_HOSTNAME: mail.${MAIL_DOMAIN:-corp.local}
       MAIL_DOMAIN: ${MAIL_DOMAIN:-corp.local}
     ports:
-      - target: 25
-        published: 25
-        mode: host
-      - target: 587
-        published: 587
-        mode: host
+      - {target: 25, published: 25, mode: host}
+      - {target: 587, published: 587, mode: host}
     volumes:
       - postfix-spool:/var/spool/postfix
-    networks:
-      - backend
+    networks: [backend]
     deploy:
       mode: global
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: stop-first
-        failure_action: rollback
-      restart_policy:
-        condition: any
-        delay: 5s
+      update_config: {<<: *rolling-update, order: stop-first}
+      restart_policy: *restart
 
   dovecot:
     image: ${REGISTRY:-registry:5000}/corpmail-dovecot:${TAG:-latest}
     environment:
       MAIL_HOSTNAME: mail.${MAIL_DOMAIN:-corp.local}
     ports:
-      - target: 143
-        published: 143
-      - target: 993
-        published: 993
-    secrets:
-      - dovecot_users
+      - {target: 143, published: 143}
+      - {target: 993, published: 993}
+    secrets: [dovecot_users]
     volumes:
       - vmail:/var/vmail
-    networks:
-      - backend
+    networks: [backend]
     deploy:
       replicas: 1
-      update_config:
-        order: stop-first
-        failure_action: rollback
-      restart_policy:
-        condition: any
-        delay: 5s
+      update_config: {order: stop-first, failure_action: rollback}
+      restart_policy: *restart
 
   rspamd:
     image: rspamd/rspamd:4.2.1@sha256:dfb8176e560c178faa4e18ebf9c9b43d0d60c2d2fa03f748c34a27e5c3418dc4
     configs:
-      - source: rspamd_redis
-        target: /etc/rspamd/local.d/redis.conf
-      - source: rspamd_antivirus
-        target: /etc/rspamd/local.d/antivirus.conf
-      - source: rspamd_milter_headers
-        target: /etc/rspamd/local.d/milter_headers.conf
-      - source: rspamd_worker_proxy
-        target: /etc/rspamd/local.d/worker-proxy.inc
-      - source: rspamd_worker_controller
-        target: /etc/rspamd/local.d/worker-controller.inc
-      - source: rspamd_options
-        target: /etc/rspamd/local.d/options.inc
-      - source: rspamd_worker_normal
-        target: /etc/rspamd/local.d/worker-normal.inc
-    networks:
-      - frontend
-      - backend
+      - {source: rspamd_redis, target: /etc/rspamd/local.d/redis.conf}
+      - {source: rspamd_antivirus, target: /etc/rspamd/local.d/antivirus.conf}
+      - {source: rspamd_milter_headers, target: /etc/rspamd/local.d/milter_headers.conf}
+      - {source: rspamd_worker_proxy, target: /etc/rspamd/local.d/worker-proxy.inc}
+      - {source: rspamd_worker_controller, target: /etc/rspamd/local.d/worker-controller.inc}
+      - {source: rspamd_options, target: /etc/rspamd/local.d/options.inc}
+      - {source: rspamd_worker_normal, target: /etc/rspamd/local.d/worker-normal.inc}
+    networks: [frontend, backend]
     deploy:
       replicas: 2
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
-        failure_action: rollback
-      restart_policy:
-        condition: any
-        delay: 5s
+      update_config: *rolling-update
+      restart_policy: *restart
       labels:
         - traefik.enable=true
         - traefik.http.routers.rspamd.rule=Host(`rspamd.${MAIL_DOMAIN:-corp.local}`)
@@ -175,28 +132,22 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
-    networks:
-      - backend
+    networks: [backend]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 15s
     deploy:
-      restart_policy:
-        condition: any
+      restart_policy: {condition: any}
 
   clamav:
     image: clamav/clamav-debian:1.4@sha256:6d0680780fd29855cb7018f68272cb520821f614259e2066f8ec669069ac91b3
     volumes:
       - clamav-db:/var/lib/clamav
-    networks:
-      - backend
+    networks: [backend]
     deploy:
       resources:
-        limits:
-          memory: 2G
-      restart_policy:
-        condition: any
-        delay: 10s
+        limits: {memory: 2G}
+      restart_policy: {condition: any, delay: 10s}
 
   mariadb:
     image: mariadb:11.8@sha256:6422478cb8e159f080fb1d8ccf65101e26fe51385787fde7d16c3b165a331f15
@@ -205,46 +156,31 @@ services:
       MARIADB_DATABASE: roundcube
       MARIADB_USER: roundcube
       MARIADB_PASSWORD_FILE: /run/secrets/roundcube_db_password
-    secrets:
-      - mariadb_root_password
-      - roundcube_db_password
+    secrets: [mariadb_root_password, roundcube_db_password]
     volumes:
       - mariadb-data:/var/lib/mysql
-    networks:
-      - backend
+    networks: [backend]
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 15s
       start_period: 30s
     deploy:
-      restart_policy:
-        condition: any
+      restart_policy: {condition: any}
 
 networks:
-  frontend:
-    driver: overlay
-  backend:
-    driver: overlay
+  frontend: {driver: overlay}
+  backend: {driver: overlay}
 
 volumes:
   vmail:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_ROOT:-/mnt/gluster}/vmail
+    driver_opts: {type: none, o: bind, device: "${DATA_ROOT:-/mnt/gluster}/vmail"}
   redis-data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_ROOT:-/mnt/gluster}/redis
+    driver_opts: {type: none, o: bind, device: "${DATA_ROOT:-/mnt/gluster}/redis"}
   mariadb-data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_ROOT:-/mnt/gluster}/mariadb
+    driver_opts: {type: none, o: bind, device: "${DATA_ROOT:-/mnt/gluster}/mariadb"}
   clamav-db:
   postfix-spool:
 

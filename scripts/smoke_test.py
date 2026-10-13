@@ -2,7 +2,6 @@ import imaplib
 import os
 import smtplib
 import ssl
-import sys
 import time
 import uuid
 from email.message import EmailMessage
@@ -18,19 +17,14 @@ ANTIVIRUS_WAIT = int(os.environ.get("ANTIVIRUS_WAIT", "90"))
 CHECK_ANTIVIRUS = os.environ.get("CHECK_ANTIVIRUS", "1") == "1"
 GTUBE = "XJS*C4JDBQADN1.NSBN3*2IDNEN*GTUBE-STANDARD-ANTI-UBE-TEST-EMAIL*C.34X"
 EICAR = r"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+TLS = ssl.create_default_context()
+TLS.check_hostname = False
+TLS.verify_mode = ssl.CERT_NONE
 
 
 def load_credentials() -> dict[str, str]:
-    path = Path(__file__).resolve().parent.parent / "secrets" / "credentials.env"
-    pairs = (line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
-    return {key: value for key, value in pairs}
-
-
-def insecure_context() -> ssl.SSLContext:
-    context = ssl.create_default_context()
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
-    return context
+    path = Path(__file__).resolve().parents[1] / "secrets" / "credentials.env"
+    return dict(line.split("=", 1) for line in path.read_text().splitlines() if "=" in line)
 
 
 def message(sender: str, recipient: str, subject: str, body: str) -> EmailMessage:
@@ -44,7 +38,7 @@ def message(sender: str, recipient: str, subject: str, body: str) -> EmailMessag
 
 def submit(user: str, password: str, mail: EmailMessage) -> None:
     with smtplib.SMTP(HOST, SUBMISSION_PORT, timeout=30) as smtp:
-        smtp.starttls(context=insecure_context())
+        smtp.starttls(context=TLS)
         smtp.login(user, password)
         smtp.send_message(mail)
 
@@ -62,15 +56,14 @@ def deliver_from_outside(mail: EmailMessage) -> tuple[int, str]:
     return 250, "accepted"
 
 
-def fetch_headers(user: str, password: str, subject: str, attempts: int = 20) -> str:
-    for _ in range(attempts):
+def fetch_headers(user: str, password: str, subject: str) -> str:
+    for _ in range(20):
         with imaplib.IMAP4(HOST, IMAP_PORT, timeout=30) as imap:
-            imap.starttls(ssl_context=insecure_context())
+            imap.starttls(ssl_context=TLS)
             imap.login(user, password)
             imap.select("INBOX", readonly=True)
             _, found = imap.search(None, "SUBJECT", f'"{subject}"')
-            ids = found[0].split()
-            if ids:
+            if ids := found[0].split():
                 _, data = imap.fetch(ids[-1], "(BODY.PEEK[HEADER])")
                 return data[0][1].decode(errors="replace")
         time.sleep(3)
@@ -129,10 +122,9 @@ def main() -> int:
             code, text = deliver_from_outside(virus)
         results.append(check("clamav rejects EICAR", code >= 500 and "virus" in text, f"{code} {text}"))
 
-    passed = sum(results)
-    print(f"{passed}/{len(results)} checks passed")
+    print(f"{sum(results)}/{len(results)} checks passed")
     return 0 if all(results) else 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

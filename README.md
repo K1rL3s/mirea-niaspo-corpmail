@@ -16,8 +16,6 @@
 | `clamav` | `clamav/clamav-debian:1.4` | 1 реплика, worker | антивирусная проверка вложений |
 | `mariadb` | `mariadb:11.8` | 1 реплика, узел `db=true` | база Roundcube |
 
-Сторонние образы в `stack.yml`, базовый `alpine` в Dockerfile, `docker:dind` и `registry` в `lab/lab.sh` и `rspamd` в `scripts/make-secrets.sh` закреплены по дайджесту мультиархитектурного индекса (`тег@sha256:...`): тег оставлен для читаемости, тянется образ по дайджесту. Новый дайджест: `docker buildx imagetools inspect <образ:тег>`, строка `Digest`.
-
 Сети: `corpmail_frontend` (Traefik, Roundcube, Rspamd UI) и `corpmail_backend` (почтовые сервисы), обе overlay.
 Пароли и ключи хранятся в секретах Swarm, конфигурации Rspamd и Roundcube - в configs Swarm; имена версионируются контрольной суммой, поэтому их изменение выкатывается обычным `deploy.sh`.
 

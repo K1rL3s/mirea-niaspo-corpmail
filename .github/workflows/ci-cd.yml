@@ -21,15 +21,10 @@ jobs:
           docker compose -f stack.yml config --quiet
       - uses: hadolint/hadolint-action@v3.5.0
         with:
-          dockerfile: postfix/Dockerfile
-      - uses: hadolint/hadolint-action@v3.5.0
-        with:
-          dockerfile: dovecot/Dockerfile
-      - uses: hadolint/hadolint-action@v3.5.0
-        with:
-          dockerfile: lab/node/Dockerfile
+          dockerfile: Dockerfile
+          recursive: true
       - name: Shellcheck
-        run: shellcheck -S warning scripts/*.sh lab/*.sh lab/node/entrypoint.sh postfix/entrypoint.sh dovecot/entrypoint.sh
+        run: git ls-files '*.sh' | xargs shellcheck -S warning
       - name: Check service configs
         run: |
           docker build -q -t postfix-check postfix
@@ -56,7 +51,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Image name
-        run: echo "IMAGE=$(echo "$REGISTRY/corpmail-${{ matrix.service }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+        run: echo "IMAGE=${REGISTRY,,}/corpmail-${{ matrix.service }}" >> "$GITHUB_ENV"
       - uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.service }}
@@ -83,20 +78,18 @@ jobs:
         run: docker swarm init
       - name: Deploy stack
         run: |
-          REGISTRY=$(echo "$REGISTRY" | tr '[:upper:]' '[:lower:]')
-          mkdir -p /tmp/corpmail-data/vmail /tmp/corpmail-data/redis /tmp/corpmail-data/mariadb
-          export REGISTRY TAG=${{ github.sha }} DATA_ROOT=/tmp/corpmail-data
+          mkdir -p /tmp/corpmail-data/{vmail,redis,mariadb}
+          export REGISTRY=${REGISTRY,,} TAG=${{ github.sha }} DATA_ROOT=/tmp/corpmail-data
           ./scripts/deploy.sh
       - name: Wait for clamd
         run: |
-          for _ in $(seq 1 60); do
-            c=$(docker ps -q -f name=corpmail_clamav)
-            [ -n "$c" ] && docker exec "$c" clamdscan --ping 1 > /dev/null 2>&1 && exit 0
+          for _ in $(seq 60); do
+            docker exec "$(docker ps -q -f name=corpmail_clamav)" clamdscan --ping 1 > /dev/null 2>&1 && exit 0
             sleep 10
           done
           exit 1
       - name: Smoke test
-        run: MAIL_HOST=127.0.0.1 python3 scripts/smoke_test.py
+        run: python3 scripts/smoke_test.py
       - name: Logs on failure
         if: failure()
         run: |
@@ -127,7 +120,6 @@ jobs:
         env:
           DOCKER_HOST: ssh://${{ vars.SWARM_MANAGER_USER }}@${{ vars.SWARM_MANAGER_HOST }}
         run: |
-          REGISTRY=$(echo "$REGISTRY" | tr '[:upper:]' '[:lower:]')
-          export REGISTRY TAG=${{ github.sha }}
+          export REGISTRY=${REGISTRY,,} TAG=${{ github.sha }}
           echo "${{ secrets.STACK_SECRETS_TAR }}" | base64 -d | tar -xz
           ./scripts/deploy.sh
