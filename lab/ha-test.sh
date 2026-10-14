@@ -38,6 +38,7 @@ start_node() {
 }
 
 dovecot_on() { [ "$(placed "$1" dovecot)" = "$2" ]; }
+dovecot_up() { [ -n "$(placed "$1" dovecot)" ]; }
 dovecot_not_on() { p=$(placed "$1" dovecot); [ -n "$p" ] && [ "$p" != "$2" ]; }
 managers_ready() {
   [ "$(on "$1" node ls --format '{{.Status}} {{.ManagerStatus}}' | grep -cE '^Ready (Leader|Reachable)')" -eq "$2" ]
@@ -121,6 +122,8 @@ docker restart "$survivor" >/dev/null
 start_node "$survivor"
 wait_for 300 managers_ready "$survivor" 3
 wait_for 600 healed "$survivor"
+wait_for 300 globals_on "$survivor" "$survivor"
+wait_for 300 dovecot_up "$survivor"
 smoke "$survivor"
 
 step "ha-test passed"
