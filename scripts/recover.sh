@@ -26,7 +26,7 @@ join() {
 finish() {
   until healed; do sleep 5; done
   gluster --mode=script volume set "$VOLUME" cluster.quorum-type auto >/dev/null
-  for id in $(docker node ls --format '{{.ID}} {{.Status}}' | awk '$2 == "Down" { print $1 }'); do
+  for id in $(docker node ls --format '{{.ID}} {{.Status}} {{.ManagerStatus}}' | awk '!($2 == "Ready" && ($3 == "Leader" || $3 == "Reachable")) { print $1 }'); do
     docker node demote "$id" >/dev/null 2>&1 || true
     docker node rm --force "$id" >/dev/null
   done
