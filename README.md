@@ -91,9 +91,10 @@ DOCKER_CONTEXT=desktop-linux ./lab/lab.sh down
 docker exec -i node-01 sh -s single < scripts/recover.sh            # на сервере: ssh <узел> sh -s single < scripts/recover.sh
 docker exec -i node-02 sh -s join <адрес> <токен> < scripts/recover.sh   # для каждого вернувшегося узла, команду печатает single
 docker exec -i node-01 sh -s finish < scripts/recover.sh
+docker restart node-01                                              # на сервере: systemctl restart docker
 ```
 
-`single` делает выживший узел кластером из одного менеджера (`docker swarm init --force-new-cluster`), снимает кворум GlusterFS, перезапускает Dovecot, MariaDB и Redis на этом узле и доставляет очередь Postfix. `join` возвращает узел в кластер менеджером. `finish` ждет окончания синхронизации GlusterFS, возвращает кворум, удаляет из списка старые записи узлов (все, кроме менеджеров в статусе `Ready`) и выравнивает задачи.
+`single` делает выживший узел кластером из одного менеджера (`docker swarm init --force-new-cluster`), снимает кворум GlusterFS, перезапускает Dovecot, MariaDB и Redis на этом узле и доставляет очередь Postfix. `join` возвращает узел в кластер менеджером. `finish` ждет окончания синхронизации GlusterFS, возвращает кворум, удаляет из списка старые записи узлов (все, кроме менеджеров в статусе `Ready`) и выравнивает задачи. Последний шаг - перезапуск Docker на узле, где выполнялся `single`: после `--force-new-cluster` routing mesh этого узла не доходит до задач на вернувшихся узлах (на стенде IMAP через порт `node-01` зависал, когда Dovecot работал на `node-03`, а сети `corpmail_backend` и `corpmail_frontend` работали), и лечит это только перезапуск демона.
 
 `single` запускается только когда два других узла действительно выключены. Если они живы, но отрезаны сетью, копии данных разойдутся (split-brain).
 

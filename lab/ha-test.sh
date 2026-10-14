@@ -117,6 +117,8 @@ for n in $dead; do
   docker exec -i "$n" sh -s join "$addr" "$token" < scripts/recover.sh
 done
 docker exec -i "$survivor" sh -s finish < scripts/recover.sh
+docker restart "$survivor" >/dev/null
+start_node "$survivor"
 wait_for 300 managers_ready "$survivor" 3
 wait_for 600 healed "$survivor"
 smoke "$survivor"
