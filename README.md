@@ -88,10 +88,16 @@ DOCKER_CONTEXT=desktop-linux ./lab/lab.sh down
 Отказ двух узлов. У Swarm и GlusterFS нет большинства: контейнеры выжившего узла работают, новые задачи не запускаются, том GlusterFS недоступен (операции с файлами завершаются ошибкой `Transport endpoint is not connected`, так GlusterFS защищает копии от расхождения). Postfix выжившего узла принимает почту на порт 25 и держит ее в очереди (том `postfix-spool`). Пока задача Dovecot не работает ни на одном доступном узле, имя `dovecot` не разрешается, и Postfix счел бы это постоянной ошибкой (5.4.4) и вернул письмо отправителю; поэтому служба `lmtp` в `postfix/master.cf` запущена с `soft_bounce=yes`, и письмо ждет в очереди. То же происходит в первые секунды отказа одного узла, пока Dovecot переезжает. Полную работу возвращает `scripts/recover.sh`, который выполняется на узлах через `sh -s`:
 
 ```sh
-docker exec -i node-01 sh -s single < scripts/recover.sh            # на сервере: ssh <узел> sh -s single < scripts/recover.sh
-docker exec -i node-02 sh -s join <адрес> <токен> < scripts/recover.sh   # для каждого вернувшегося узла, команду печатает single
+# на сервере: ssh <узел> sh -s single < scripts/recover.sh
+docker exec -i node-01 sh -s single < scripts/recover.sh
+
+# для каждого вернувшегося узла, команду печатает single
+docker exec -i node-02 sh -s join <адрес> <токен> < scripts/recover.sh
+
 docker exec -i node-01 sh -s finish < scripts/recover.sh
-docker restart node-01                                              # на сервере: systemctl restart docker
+
+# на сервере: systemctl restart docker
+docker restart node-01
 ```
 
 `single` делает выживший узел кластером из одного менеджера (`docker swarm init --force-new-cluster`), снимает кворум GlusterFS, перезапускает Dovecot, MariaDB и Redis на этом узле и доставляет очередь Postfix. `join` возвращает узел в кластер менеджером. `finish` ждет окончания синхронизации GlusterFS, возвращает кворум, удаляет из списка старые записи узлов (все, кроме менеджеров в статусе `Ready`) и выравнивает задачи. Последний шаг - перезапуск Docker на узле, где выполнялся `single`: после `--force-new-cluster` routing mesh этого узла не доходит до задач на вернувшихся узлах (на стенде IMAP через порт `node-01` зависал, когда Dovecot работал на `node-03`, а сети `corpmail_backend` и `corpmail_frontend` работали), и лечит это только перезапуск демона.
