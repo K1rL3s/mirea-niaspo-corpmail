@@ -4,6 +4,7 @@ set -e
 postconf -e "myhostname = ${MAIL_HOSTNAME:-mail.corp.local}" \
             "mydomain = ${MAIL_DOMAIN:-corp.local}" \
             "virtual_mailbox_domains = ${MAIL_DOMAIN:-corp.local}" \
+            "virtual_alias_maps = inline:{ postmaster@${MAIL_DOMAIN:-corp.local}=admin@${MAIL_DOMAIN:-corp.local} }" \
             "mynetworks = 127.0.0.0/8 ${TRUSTED_NETWORKS:-}"
 
 mkdir -p /etc/postfix/tls

@@ -10,6 +10,7 @@ inet_protocols = ipv4
 biff = no
 
 virtual_mailbox_domains = corp.local
+virtual_alias_maps = inline:{ postmaster@corp.local=admin@corp.local }
 virtual_transport = lmtp:inet:dovecot:24
 lmtp_host_lookup = native
 smtp_host_lookup = dns, native

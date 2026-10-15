@@ -47,19 +47,19 @@ healed() { gl "$1" volume heal corpmail info | awk '/^Number of entries:/ { s +=
 globals_on() { for s in postfix traefik; do placed "$1" "$s" | grep -qx "$2" || return 1; done; }
 
 task_exec() { docker exec "$1" sh -c "docker exec \$(docker ps -q -f name=${STACK}_$2 | head -1) $3"; }
-delivered() { task_exec "$1" dovecot "doveadm search -u bob@corp.local subject $2" | grep -q .; }
+delivered() { task_exec "$1" dovecot "doveadm search -u dima@corp.local subject $2" | grep -q .; }
 
 send_external() {
   i=$(index "$1")
   python3 - "$((2525 + i))" "$2" <<'PY'
 import smtplib, sys, time
 port, subject = int(sys.argv[1]), sys.argv[2]
-message = f"From: partner@external.test\r\nTo: bob@corp.local\r\nSubject: {subject}\r\n\r\nsent while two nodes are down\r\n"
+message = f"From: partner@external.test\r\nTo: dima@corp.local\r\nSubject: {subject}\r\n\r\nsent while two nodes are down\r\n"
 deadline = time.time() + 420
 while True:
     try:
         with smtplib.SMTP("127.0.0.1", port, "mx.external.test", timeout=30) as smtp:
-            smtp.sendmail("partner@external.test", ["bob@corp.local"], message)
+            smtp.sendmail("partner@external.test", ["dima@corp.local"], message)
         print("accepted")
         break
     except (smtplib.SMTPException, OSError) as error:
@@ -100,7 +100,7 @@ step "4. stop$dead, only $survivor is left"
 docker stop $dead >/dev/null
 sleep 20
 send_external "$survivor" "$subject"
-task_exec "$survivor" postfix "postqueue -p" | grep -q bob@corp.local
+task_exec "$survivor" postfix "postqueue -p" | grep -q dima@corp.local
 echo "message is queued on $survivor"
 
 step "5. recover.sh single on $survivor"

@@ -77,17 +77,17 @@ def check(title: str, condition: bool, detail: str) -> bool:
 
 def main() -> int:
     creds = load_credentials()
-    alice, bob = f"alice@{DOMAIN}", f"bob@{DOMAIN}"
+    kirill, dima = f"kirill@{DOMAIN}", f"dima@{DOMAIN}"
     token = uuid.uuid4().hex[:8]
     results = []
 
     subject = f"smoke internal {token}"
-    submit(alice, creds["ALICE_PASSWORD"], message(alice, bob, subject, "Проверка доставки внутри домена."))
-    fetch_headers(bob, creds["BOB_PASSWORD"], subject)
-    results.append(check("submission 587 + SASL -> LMTP -> IMAP", True, f"письмо '{subject}' в INBOX {bob}"))
+    submit(kirill, creds["KIRILL_PASSWORD"], message(kirill, dima, subject, "Проверка доставки внутри домена."))
+    fetch_headers(dima, creds["DIMA_PASSWORD"], subject)
+    results.append(check("submission 587 + SASL -> LMTP -> IMAP", True, f"письмо '{subject}' в INBOX {dima}"))
 
     subject = f"smoke external {token}"
-    incoming = message(f"partner-{token}@external.test", bob, subject, "Входящее письмо извне.")
+    incoming = message(f"partner-{token}@external.test", dima, subject, "Входящее письмо извне.")
     code, text = deliver_from_outside(incoming)
     print(f"[INFO] first delivery attempt from unknown sender: {code} {text}")
     deadline = time.monotonic() + GREYLIST_WAIT
@@ -95,12 +95,12 @@ def main() -> int:
         time.sleep(30)
         code, text = deliver_from_outside(incoming)
     results.append(check("SMTP 25 from external after retry", code == 250, f"{code} {text}"))
-    headers = fetch_headers(bob, creds["BOB_PASSWORD"], subject)
+    headers = fetch_headers(dima, creds["DIMA_PASSWORD"], subject)
     scanned = "X-Spamd-Result" in headers and "X-Spam-Status" in headers
     results.append(check("rspamd milter headers", scanned, "X-Spamd-Result и X-Spam-Status во входящем письме"))
 
     try:
-        submit(alice, "wrong-password", message(alice, bob, "bad auth", "x"))
+        submit(kirill, "wrong-password", message(kirill, dima, "bad auth", "x"))
         results.append(check("SASL rejects wrong password", False, "письмо принято"))
     except smtplib.SMTPAuthenticationError as error:
         results.append(check("SASL rejects wrong password", True, f"{error.smtp_code}"))
@@ -108,11 +108,11 @@ def main() -> int:
     code, text = deliver_from_outside(message("spammer@external.test", "nobody@example.org", "relay", "x"))
     results.append(check("no open relay", code >= 500, f"{code} {text}"))
 
-    code, text = deliver_from_outside(message("spammer@external.test", bob, f"gtube {token}", GTUBE))
+    code, text = deliver_from_outside(message("spammer@external.test", dima, f"gtube {token}", GTUBE))
     results.append(check("rspamd rejects GTUBE spam", code >= 500, f"{code} {text}"))
 
     if CHECK_ANTIVIRUS:
-        virus = message("attacker@external.test", bob, f"eicar {token}", "Вложение во вложении.")
+        virus = message("attacker@external.test", dima, f"eicar {token}", "Вложение во вложении.")
         virus.add_attachment(EICAR.encode(), maintype="text", subtype="plain", filename="readme.txt")
         deadline = time.monotonic() + ANTIVIRUS_WAIT
         code, text = deliver_from_outside(virus)

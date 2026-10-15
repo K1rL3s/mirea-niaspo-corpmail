@@ -9,14 +9,15 @@ cd secrets
 random() { openssl rand -base64 18 | tr -d '/+=' | cut -c1-20; }
 
 [ -s credentials.env ] || {
-  echo "ALICE_PASSWORD=$(random)"
-  echo "BOB_PASSWORD=$(random)"
+  echo "KIRILL_PASSWORD=$(random)"
+  echo "DIMA_PASSWORD=$(random)"
+  echo "MAKS_PASSWORD=$(random)"
   echo "ADMIN_PASSWORD=$(random)"
 } > credentials.env
 # shellcheck source=/dev/null
 . ./credentials.env
 
-[ -s dovecot_users ] || for user in alice:"$ALICE_PASSWORD" bob:"$BOB_PASSWORD" postmaster:"$ADMIN_PASSWORD"; do
+[ -s dovecot_users ] || for user in kirill:"$KIRILL_PASSWORD" dima:"$DIMA_PASSWORD" maks:"$MAKS_PASSWORD" admin:"$ADMIN_PASSWORD"; do
   echo "${user%%:*}@${MAIL_DOMAIN:-corp.local}:{SHA512-CRYPT}$(openssl passwd -6 "${user#*:}")::::::"
 done > dovecot_users
 
